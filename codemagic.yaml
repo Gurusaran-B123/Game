@@ -1,0 +1,27 @@
+workflows:
+  android-apk:
+    name: Deplo Hatch APK
+    max_build_duration: 30
+    instance_type: mac_mini_m2
+    environment:
+      flutter: stable
+      # Optional: a variable group "deplohatch_signing" with KEYSTORE_BASE64 and KEYSTORE_PASSWORD.
+      # Delete the next 2 lines if you only want a test (debug-signed) APK.
+      groups:
+        - deplohatch_signing
+    scripts:
+      - name: Prepare signing key
+        script: |
+          if [ -n "$KEYSTORE_BASE64" ] && [ -n "$KEYSTORE_PASSWORD" ]; then
+            echo "$KEYSTORE_BASE64" | base64 --decode > "$HOME/release.jks"
+            echo "CM_KEYSTORE_PATH=$HOME/release.jks" >> $CM_ENV
+            echo "CM_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> $CM_ENV
+            echo "CM_KEY_ALIAS=deplohatch" >> $CM_ENV
+            echo "CM_KEY_PASSWORD=$KEYSTORE_PASSWORD" >> $CM_ENV
+          fi
+      - name: Setup
+        script: bash setup.sh
+      - name: Build release APK
+        script: flutter build apk --release --target-platform android-arm,android-arm64
+    artifacts:
+      - build/app/outputs/flutter-apk/*.apk
