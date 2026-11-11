@@ -16,6 +16,7 @@ import '../widgets/game_overlays.dart';
 import '../widgets/hatch_animation.dart';
 import '../widgets/nest_widget.dart';
 import '../widgets/ui_bits.dart';
+import 'task_select_screen.dart';
 
 class _EggInfo {
   _EggInfo(this.id, this.type, this.slot);
@@ -74,7 +75,7 @@ class _HatchInfo {
 /// Sizes and positions of everything on the board. Built from the WHOLE level
 /// (largest round) so nothing jumps around between rounds.
 class _Layout {
-  _Layout(this.size, EdgeInsets pad, LevelModel level) {
+  _Layout(this.size, EdgeInsets pad, TaskSpec level) {
     top = pad.top + 8;
     y0 = top + hud + 2 + info + 8;
     bottomY = size.height - pad.bottom - 8;
@@ -174,8 +175,9 @@ class _Layout {
 }
 
 class GameScreen extends StatefulWidget {
-  const GameScreen({super.key, required this.levelIndex});
+  const GameScreen({super.key, required this.levelIndex, required this.taskIndex});
   final int levelIndex;
+  final int taskIndex; // 0..9
 
   @override
   State<GameScreen> createState() => _GameScreenState();
@@ -184,6 +186,7 @@ class GameScreen extends StatefulWidget {
 class _GameScreenState extends State<GameScreen>
     with TickerProviderStateMixin, WidgetsBindingObserver {
   late final LevelModel level = kLevels[widget.levelIndex];
+  late final TaskSpec task = level.tasks[widget.taskIndex];
   final GlobalKey _stackKey = GlobalKey();
   final math.Random _rnd = math.Random();
 
@@ -193,6 +196,7 @@ class _GameScreenState extends State<GameScreen>
   List<_NestInfo> _nests = [];
   List<Offset> _jitter = [];
   List<double> _phase = [];
+  List<double> _angle = [];
   final Map<int, int> _shake = {};
   final List<_Bounce> _bounces = [];
   final List<_Floaty> _floaties = [];
@@ -201,7 +205,9 @@ class _GameScreenState extends State<GameScreen>
   final List<int> _seated = [];
 
   // ---- whole level ----
-  late int _remaining = level.timeSeconds;
+  late int _remaining = task.timeSeconds;
+  int _wallet = 0;
+  bool _timeUpFail = false;
   int _score = 0;
   int _stars = 0;
   int _slotCounter = 0;
@@ -240,15 +246,18 @@ class _GameScreenState extends State<GameScreen>
   _Layout? _lay;
 
   bool get _ended => _won || _lost;
-  bool get _roams => level.movingNests || level.rollingEggs;
-  int? get _moveLimit => level.moveLimit;
+  bool get _roams => task.movingNests || task.rollingEggs;
+  int? get _moveLimit => task.moveLimit;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _buildRound();
-    _showBanner('Level ${level.number}', level.title, level.rule);
+    _showBanner('Level ${level.number} - Task ${task.number}', task.title, task.rule);
+    ProgressStore.load().then((p) {
+      if (mounted) setState(() => _wallet = p.wallet);
+    });
     _timer = Timer.periodic(const Duration(seconds: 1), _onSecond);
     if (_roams) _roamCtl.repeat();
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -282,7 +291,7 @@ class _GameScreenState extends State<GameScreen>
 
   // ---- rounds ----------------------------------------------------------------
   void _buildRound() {
-    final spec = level.rounds[_round];
+    final spec = task.rounds[_round];
     final pool = List<EggType>.from(level.eggs)..shuffle(_rnd);
     final n = spec.nests;
     final nestTypes = pool.take(n).toList();
@@ -292,7 +301,7 @@ class _GameScreenState extends State<GameScreen>
           nestTypes[i],
           spec.needed,
           boss: spec.boss,
-          locked: level.lockedNest && n >= 3 && i == n - 1,
+          locked: task.lockedNest && n >= 3 && i == n - 1,
         ),
     ];
     final types = <EggType>[];
@@ -306,28 +315,29 @@ class _GameScreenState extends State<GameScreen>
     }
     if (spec.golden) types.add(kGoldenEgg);
     types.shuffle(_rnd);
-    final slots = List<int>.generate(level.maxEggs, (i) => i)..shuffle(_rnd);
+    final slots = List<int>.generate(task.maxEggs, (i) => i)..shuffle(_rnd);
     _eggs = [for (var i = 0; i < types.length; i++) _EggInfo(i, types[i], slots[i])];
     _jitter = [
       for (var i = 0; i < _eggs.length; i++)
         Offset(_rnd.nextDouble() * 2 - 1, _rnd.nextDouble() * 2 - 1)
     ];
     _phase = [for (var i = 0; i < _eggs.length; i++) _rnd.nextDouble() * math.pi * 2];
+    _angle = [for (var i = 0; i < _eggs.length; i++) _rnd.nextDouble() * math.pi * 2];
     _shake.clear();
     _bounces.clear();
     _hintEgg = -1;
     _hintNest = -1;
     _hintLeft = 0;
     _memoryHidden = false;
-    _memoryLeft = level.memory ? 3 : 0;
+    _memoryLeft = task.memory ? 3 : 0;
   }
 
   void _nextRound() {
     setState(() {
       _round++;
       _buildRound();
-      _showBanner('Round ${_round + 1}/${level.rounds.length}', '',
-          level.rounds[_round].boss ? 'BOSS! Fill the giant nest with ${level.rounds[_round].needed} matching eggs!' : 'Hatch ${level.rounds[_round].nests} more babies!');
+      _showBanner('Round ${_round + 1}/${task.rounds.length}', '',
+          task.rounds[_round].boss ? 'BOSS! Fill the giant nest with ${task.rounds[_round].needed} matching eggs!' : 'Hatch ${task.rounds[_round].nests} more babies!');
     });
     SoundManager.instance.play('combo');
   }
@@ -354,8 +364,8 @@ class _GameScreenState extends State<GameScreen>
     });
     if (_remaining <= 0) {
       // If everything is already sorted, let the last hatch finish.
-      if (_eggs.isNotEmpty && _round == level.rounds.length - 1 && _nests.every((n) => n.hatching || n.hatched)) return;
-      _gameOver("Time's up!");
+      if (_eggs.isNotEmpty && _round == task.rounds.length - 1 && _nests.every((n) => n.hatching || n.hatched)) return;
+      _gameOver("Time's up!", timeUp: true);
     }
   }
 
@@ -397,14 +407,67 @@ class _GameScreenState extends State<GameScreen>
 
   void _restart() {
     Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => GameScreen(levelIndex: widget.levelIndex)),
+      MaterialPageRoute(
+        builder: (_) => GameScreen(levelIndex: widget.levelIndex, taskIndex: widget.taskIndex),
+      ),
     );
   }
 
+  /// What the green button after a win does: next task, next level or nothing.
+  String? get _nextLabel {
+    if (widget.taskIndex < kTasksPerLevel - 1) return 'Next Task';
+    if (widget.levelIndex < kLevels.length - 1) return 'Next Level';
+    return null;
+  }
+
   void _next() {
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => GameScreen(levelIndex: widget.levelIndex + 1)),
-    );
+    final nav = Navigator.of(context);
+    if (widget.taskIndex < kTasksPerLevel - 1) {
+      nav.pushReplacement(MaterialPageRoute(
+        builder: (_) => GameScreen(levelIndex: widget.levelIndex, taskIndex: widget.taskIndex + 1),
+      ));
+    } else {
+      nav.popUntil((r) => r.isFirst);
+      if (widget.levelIndex < kLevels.length - 1) {
+        nav.push(MaterialPageRoute(
+          builder: (_) => TaskSelectScreen(levelIndex: widget.levelIndex + 1),
+        ));
+      }
+    }
+  }
+
+  // ---- stars -> time -------------------------------------------------------------
+  Future<void> _buyTime() async {
+    if (_ended) return;
+    final lay = _lay;
+    final pos = Offset((lay?.size.width ?? 300) / 2, (lay?.top ?? 40) + 140);
+    final ok = await ProgressStore.spend(kBuyTimeCost);
+    if (!mounted) return;
+    setState(() {
+      if (ok) {
+        _wallet = math.max(0, _wallet - kBuyTimeCost);
+        _remaining += kBuyTimeSeconds;
+        _floaty('+$kBuyTimeSeconds sec', pos, const Color(0xFF80DEEA));
+      } else {
+        _floaty('Need $kBuyTimeCost stars', pos, const Color(0xFFFF8A80));
+      }
+    });
+    SoundManager.instance.play(ok ? 'golden' : 'wrong', volume: 0.7);
+  }
+
+  Future<void> _continueAfterTimeUp() async {
+    final ok = await ProgressStore.spend(kBuyTimeCost);
+    if (!mounted || !ok) return;
+    setState(() {
+      _wallet = math.max(0, _wallet - kBuyTimeCost);
+      _remaining = kBuyTimeSeconds;
+      _lost = false;
+      _timeUpFail = false;
+      _timer?.cancel();
+      _timer = Timer.periodic(const Duration(seconds: 1), _onSecond);
+    });
+    if (_roams) _roamCtl.repeat();
+    SoundManager.instance.resumeMusic();
   }
 
   // ---- geometry helpers ---------------------------------------------------------
@@ -417,7 +480,7 @@ class _GameScreenState extends State<GameScreen>
   double _nestDx(int i, _Layout lay) {
     final n = _nests[i];
     if (n.hatching || n.hatched) return n.frozenDx;
-    if (!level.movingNests || n.boss) return 0;
+    if (!task.movingNests || n.boss) return 0;
     final (row, _, _) = lay.rc(i, _nests.length);
     final amp = math.min(lay.size.width * 0.10, 36.0);
     return math.sin((_roamCtl.value + row * 0.5) * math.pi * 2) * amp;
@@ -434,7 +497,7 @@ class _GameScreenState extends State<GameScreen>
 
   Offset _eggPos(int i, _Layout lay) {
     final base = lay.eggTopLeft(_eggs[i].slot, _jitter[i]);
-    if (!level.rollingEggs) return base;
+    if (!task.rollingEggs) return base;
     final t = _roamCtl.value * math.pi * 2;
     final ph = _phase[i];
     return base + Offset(math.sin(t + ph) * lay.cellW * 0.42, math.cos(t * 2 + ph) * lay.cellH * 0.10);
@@ -569,7 +632,7 @@ class _GameScreenState extends State<GameScreen>
     if (limit == null || _ended) return;
     if (limit - _moves > 0) return;
     final stillNeeds = _nests.any((n) => !n.hatched && !n.hatching && n.count < n.needed) ||
-        _round < level.rounds.length - 1;
+        _round < task.rounds.length - 1;
     if (stillNeeds) _gameOver('Out of moves!');
   }
 
@@ -629,7 +692,7 @@ class _GameScreenState extends State<GameScreen>
     });
     ProgressStore.addToAlbum(level.babyName);
     if (_nests.every((n) => n.hatched)) {
-      if (_round < level.rounds.length - 1) {
+      if (_round < task.rounds.length - 1) {
         _nextRound();
       } else {
         _win();
@@ -641,7 +704,7 @@ class _GameScreenState extends State<GameScreen>
     _timer?.cancel();
     _roamCtl.stop();
     final left = _remaining;
-    final frac = left / level.timeSeconds;
+    final frac = left / task.timeSeconds;
     var stars = frac >= 0.5 ? 3 : (frac >= 0.25 ? 2 : 1);
     if (_broken > 4) stars = math.max(1, stars - 1);
     _stars = stars;
@@ -649,14 +712,15 @@ class _GameScreenState extends State<GameScreen>
       _score += left * 2;
       _won = true;
     });
-    ProgressStore.saveResult(level.number, _stars, kLevels.length);
+    ProgressStore.saveTask(widget.levelIndex, widget.taskIndex, _stars);
     SoundManager.instance.pauseMusic();
     SoundManager.instance.play('win');
     _winConfetti.play();
   }
 
-  void _gameOver(String reason) {
+  void _gameOver(String reason, {bool timeUp = false}) {
     if (_ended) return;
+    _timeUpFail = timeUp;
     _timer?.cancel();
     _roamCtl.stop();
     setState(() {
@@ -679,7 +743,7 @@ class _GameScreenState extends State<GameScreen>
         backgroundColor: Colors.black,
         body: LayoutBuilder(
           builder: (context, box) {
-            final lay = _Layout(Size(box.maxWidth, box.maxHeight), MediaQuery.of(context).padding, level);
+            final lay = _Layout(Size(box.maxWidth, box.maxHeight), MediaQuery.of(context).padding, task);
             _lay = lay;
             return Stack(
               children: [
@@ -701,19 +765,30 @@ class _GameScreenState extends State<GameScreen>
                     onRestart: _restart,
                     onSettings: _openSettings,
                     onMenu: _goMenu,
+                    wallet: _wallet,
+                    onBuyTime: _buyTime,
                   ),
                 if (_won)
                   LevelCompleteOverlay(
+                    title: widget.taskIndex == kTasksPerLevel - 1 ? 'Level Complete!' : 'Task Complete!',
                     stars: _stars,
                     score: _score,
                     timeLeft: _remaining,
-                    isLast: widget.levelIndex >= kLevels.length - 1,
+                    nextLabel: _nextLabel,
                     onNext: _next,
                     onReplay: _restart,
                     onMenu: _goMenu,
                   ),
                 if (_lost)
-                  GameOverOverlay(score: _score, reason: _failReason, onRetry: _restart, onMenu: _goMenu),
+                  GameOverOverlay(
+                    score: _score,
+                    reason: _failReason,
+                    wallet: _wallet,
+                    canContinue: _timeUpFail,
+                    onContinue: _continueAfterTimeUp,
+                    onRetry: _restart,
+                    onMenu: _goMenu,
+                  ),
                 if (_won)
                   Align(
                     alignment: Alignment.topCenter,
@@ -778,7 +853,8 @@ class _GameScreenState extends State<GameScreen>
       animation: _roamCtl,
       builder: (context, _) {
         final p = _eggPos(i, lay);
-        final tilt = level.rollingEggs ? math.cos(_roamCtl.value * math.pi * 2 + _phase[i]) * 0.5 : 0.0;
+        final tilt = (task.rollingEggs ? math.cos(_roamCtl.value * math.pi * 2 + _phase[i]) * 0.5 : 0.0) +
+            (task.rotatedEggs ? _angle[i] : 0.0);
         return Positioned(
           left: p.dx,
           top: p.dy,
@@ -794,7 +870,7 @@ class _GameScreenState extends State<GameScreen>
     final accent = level.accent;
     final bouncing = _bounces.map((b) => b.eggId).toSet();
     final home = lay.homeSlot;
-    final totalSlots = level.totalHatches;
+    final totalSlots = task.totalHatches;
 
     return Stack(
       key: _stackKey,
@@ -1085,22 +1161,37 @@ class _GameScreenState extends State<GameScreen>
     final low = _remaining <= 10;
     return Row(
       children: [
-        RoundIconButton(icon: Icons.pause_rounded, color: const Color(0xFFFF7043), onTap: _pause),
-        const SizedBox(width: 8),
-        Expanded(child: HudChip(icon: Icons.flag_rounded, text: 'Lv ${level.number}', color: const Color(0xFFFFE082))),
+        RoundIconButton(icon: Icons.pause_rounded, color: const Color(0xFFFF7043), onTap: _pause, size: 40),
         const SizedBox(width: 6),
-        Expanded(child: HudChip(icon: Icons.star_rounded, text: '$_score', color: const Color(0xFFFFD54F))),
+        Expanded(child: HudChip(icon: Icons.flag_rounded, text: '${level.number}-${task.number}', color: const Color(0xFFFFE082), fontSize: 16)),
+        const SizedBox(width: 6),
+        Expanded(child: HudChip(icon: Icons.star_rounded, text: '$_score', color: const Color(0xFFFFD54F), fontSize: 16)),
         const SizedBox(width: 6),
         Expanded(
           child: HudChip(
             icon: Icons.timer_rounded,
             text: '$m:${s.toString().padLeft(2, '0')}',
+            fontSize: 16,
             color: low ? Colors.white : const Color(0xFF80DEEA),
             background: low ? const Color(0xCCD32F2F) : const Color(0x66000000),
           ),
         ),
-        const SizedBox(width: 8),
-        RoundIconButton(icon: Icons.settings_rounded, color: const Color(0xFF8E24AA), onTap: _openSettings),
+        const SizedBox(width: 6),
+        GestureDetector(
+          onTap: _buyTime,
+          child: Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: _wallet >= kBuyTimeCost ? const Color(0xFFFFA000) : const Color(0xFF9E9E9E),
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white, width: 3),
+            ),
+            child: const Icon(Icons.add_alarm_rounded, color: Colors.white, size: 22),
+          ),
+        ),
+        const SizedBox(width: 6),
+        RoundIconButton(icon: Icons.settings_rounded, color: const Color(0xFF8E24AA), onTap: _openSettings, size: 40),
       ],
     );
   }
@@ -1113,7 +1204,7 @@ class _GameScreenState extends State<GameScreen>
         Expanded(
           child: HudChip(
             icon: Icons.layers_rounded,
-            text: 'Round ${_round + 1}/${level.rounds.length}',
+            text: 'Round ${_round + 1}/${task.rounds.length}',
             fontSize: 14,
           ),
         ),
@@ -1121,7 +1212,7 @@ class _GameScreenState extends State<GameScreen>
         Expanded(
           child: HudChip(
             icon: Icons.egg_alt_rounded,
-            text: '$_hatchedTotal/${level.totalHatches}',
+            text: '$_hatchedTotal/${task.totalHatches}',
             fontSize: 14,
             color: const Color(0xFFFFF59D),
           ),
