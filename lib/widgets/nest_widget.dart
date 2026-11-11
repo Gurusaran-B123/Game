@@ -21,6 +21,8 @@ class NestWidget extends StatelessWidget {
     required this.hatching,
     required this.hatched,
     required this.popToken,
+    required this.hint,
+    required this.locked,
     required this.canAccept,
     required this.onAccept,
   });
@@ -34,6 +36,8 @@ class NestWidget extends StatelessWidget {
   final bool hatching;
   final bool hatched;
   final int popToken;
+  final bool hint; // glow to show where the hinted egg goes
+  final bool locked; // covered by ice
   final bool canAccept;
   final void Function(int eggId, Offset globalPointer) onAccept;
 
@@ -43,7 +47,7 @@ class NestWidget extends StatelessWidget {
       onWillAcceptWithDetails: (d) => canAccept,
       onAcceptWithDetails: (d) => onAccept(d.data, d.offset),
       builder: (context, candidate, rejected) {
-        final hot = candidate.isNotEmpty;
+        final hot = candidate.isNotEmpty || hint;
         return SizedBox(
           width: slotWidth,
           height: slotHeight,
@@ -61,7 +65,8 @@ class NestWidget extends StatelessWidget {
 
   Widget _body(bool hot) {
     final h = width * kNestAspect;
-    final eggW = width * 0.30;
+    final eggW = width * (eggsNeeded <= 3 ? 0.30 : 0.21);
+    final spread = eggsNeeded <= 3 ? 0.25 : 0.15;
     final showEggs = !hatching && !hatched;
     final nestImage = Image.asset(
       'assets/images/nest.png',
@@ -115,7 +120,7 @@ class NestWidget extends StatelessWidget {
             Positioned(
               bottom: h * 0.30,
               child: Opacity(
-                opacity: 0.35,
+                opacity: 0.55,
                 child: EggWidget(type: type, size: eggW),
               ),
             ),
@@ -123,8 +128,8 @@ class NestWidget extends StatelessWidget {
           if (showEggs)
             for (var k = 0; k < eggCount; k++)
               Positioned(
-                left: width * 0.5 - eggW / 2 + (k - 1) * width * 0.25,
-                bottom: h * (k == 1 ? 0.40 : 0.32),
+                left: width * 0.5 - eggW / 2 + (k - (eggsNeeded - 1) / 2) * width * spread,
+                bottom: h * (k.isOdd ? 0.40 : 0.32),
                 child: TweenAnimationBuilder<double>(
                   key: ValueKey('p$k'),
                   tween: Tween(begin: 0.0, end: 1.0),
@@ -183,6 +188,21 @@ class NestWidget extends StatelessWidget {
                       ),
                     ),
                 ],
+              ),
+            ),
+          if (locked)
+            Positioned(
+              left: 0,
+              bottom: 0,
+              width: width,
+              height: h,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: const Color(0xDDBFE6FF),
+                  borderRadius: BorderRadius.circular(h * 0.5),
+                  border: Border.all(color: Colors.white, width: 3),
+                ),
+                child: Icon(Icons.lock_rounded, color: const Color(0xFF1E6FB8), size: h * 0.6),
               ),
             ),
           if (hatched)
