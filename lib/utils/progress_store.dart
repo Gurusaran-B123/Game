@@ -1,37 +1,68 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Saves which levels are unlocked and the best stars per level.
+import '../models/level_model.dart';
+
+/// Everything saved on the phone: stars for every task, spent stars, album.
+class Progress {
+  Progress(this.stars, this.spent);
+
+  /// stars[level][task] = 0..3 (best result)
+  final List<List<int>> stars;
+  final int spent;
+
+  int levelStars(int level) => stars[level].fold<int>(0, (a, b) => a + b);
+  int get totalStars =>
+      stars.fold<int>(0, (a, l) => a + l.fold<int>(0, (x, y) => x + y));
+
+  /// Stars you can still spend on extra time.
+  int get wallet => totalStars - spent < 0 ? 0 : totalStars - spent;
+
+  bool levelUnlocked(int level) => level == 0 || stars[level - 1][kTasksPerLevel - 1] > 0;
+  bool taskUnlocked(int level, int task) => task == 0 || stars[level][task - 1] > 0;
+}
+
+/// Saves progress with shared_preferences. Every call is safe: on any error
+/// it just returns an empty result.
 class ProgressStore {
   ProgressStore._();
 
-  /// Highest level number the player may open (starts at 1).
-  static Future<int> unlocked() async {
-    try {
-      final p = await SharedPreferences.getInstance();
-      return p.getInt('unlocked') ?? 1;
-    } catch (_) {
-      return 1;
-    }
-  }
+  static String _k(int level, int task) => 't_${level}_$task';
 
-  static Future<int> stars(int level) async {
+  static Future<Progress> load() async {
+    final stars = List.generate(kLevels.length, (_) => List.filled(kTasksPerLevel, 0));
+    var spent = 0;
     try {
       final p = await SharedPreferences.getInstance();
-      return p.getInt('stars_$level') ?? 0;
-    } catch (_) {
-      return 0;
-    }
-  }
-
-  static Future<void> saveResult(int level, int stars, int totalLevels) async {
-    try {
-      final p = await SharedPreferences.getInstance();
-      final old = p.getInt('stars_$level') ?? 0;
-      if (stars > old) await p.setInt('stars_$level', stars);
-      final next = level + 1;
-      final cur = p.getInt('unlocked') ?? 1;
-      if (next <= totalLevels && next > cur) await p.setInt('unlocked', next);
+      for (var l = 0; l < kLevels.length; l++) {
+        for (var t = 0; t < kTasksPerLevel; t++) {
+          stars[l][t] = p.getInt(_k(l, t)) ?? 0;
+        }
+      }
+      spent = p.getInt('spent') ?? 0;
     } catch (_) {}
+    return Progress(stars, spent);
+  }
+
+  /// Keeps the best star count of a task.
+  static Future<void> saveTask(int level, int task, int stars) async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      final old = p.getInt(_k(level, task)) ?? 0;
+      if (stars > old) await p.setInt(_k(level, task), stars);
+    } catch (_) {}
+  }
+
+  /// Spends [n] stars. Returns false if there are not enough.
+  static Future<bool> spend(int n) async {
+    try {
+      final pr = await load();
+      if (pr.wallet < n) return false;
+      final p = await SharedPreferences.getInstance();
+      await p.setInt('spent', pr.spent + n);
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   /// Names of babies the player has hatched at least once.
