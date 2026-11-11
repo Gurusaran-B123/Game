@@ -33,4 +33,25 @@ class ProgressStore {
       if (next <= totalLevels && next > cur) await p.setInt('unlocked', next);
     } catch (_) {}
   }
+
+  /// Names of babies the player has hatched at least once.
+  static Future<Set<String>> album() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      return (p.getStringList('album') ?? <String>[]).toSet();
+    } catch (_) {
+      return <String>{};
+    }
+  }
+
+  static Future<void> addToAlbum(String name) async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      final list = p.getStringList('album') ?? <String>[];
+      if (!list.contains(name)) {
+        list.add(name);
+        await p.setStringList('album', list);
+      }
+    } catch (_) {}
+  }
 }
