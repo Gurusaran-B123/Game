@@ -20,6 +20,8 @@ class EggWidget extends StatefulWidget {
     this.shakeToken = 0,
     this.shakeTimes = 2,
     this.crack = 0,
+    this.hidden = false,
+    this.glow = false,
   });
 
   final EggType type;
@@ -27,6 +29,8 @@ class EggWidget extends StatefulWidget {
   final int shakeToken;
   final int shakeTimes;
   final double crack; // 0..1 crack lines
+  final bool hidden; // show the covered "?" egg (memory level)
+  final bool glow; // yellow glow (hint / golden egg)
 
   @override
   State<EggWidget> createState() => _EggWidgetState();
@@ -75,13 +79,26 @@ class _EggWidgetState extends State<EggWidget> with SingleTickerProviderStateMix
         height: h,
         child: Stack(
           fit: StackFit.expand,
+          clipBehavior: Clip.none,
           children: [
+            if (widget.glow)
+              Positioned.fill(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(w),
+                    boxShadow: const [
+                      BoxShadow(color: Color(0xCCFFD54F), blurRadius: 20, spreadRadius: 4),
+                    ],
+                  ),
+                ),
+              ),
             Image.asset(
-              widget.type.asset,
+              widget.hidden ? kMysteryEgg.asset : widget.type.asset,
               fit: BoxFit.contain,
               gaplessPlayback: true,
-              errorBuilder: (context, error, stack) =>
-                  CustomPaint(painter: _FallbackEggPainter(widget.type.color)),
+              errorBuilder: (context, error, stack) => CustomPaint(
+                painter: _FallbackEggPainter(widget.hidden ? kMysteryEgg.color : widget.type.color),
+              ),
             ),
             if (widget.crack > 0)
               CustomPaint(painter: CrackPainter(widget.crack)),
