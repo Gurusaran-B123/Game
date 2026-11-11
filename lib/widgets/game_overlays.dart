@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../models/level_model.dart';
 import '../utils/sound_manager.dart';
 import 'ui_bits.dart';
 
@@ -96,12 +97,16 @@ class PauseOverlay extends StatelessWidget {
     required this.onRestart,
     required this.onSettings,
     required this.onMenu,
+    required this.wallet,
+    required this.onBuyTime,
   });
 
   final VoidCallback onResume;
   final VoidCallback onRestart;
   final VoidCallback onSettings;
   final VoidCallback onMenu;
+  final int wallet; // stars you can spend
+  final VoidCallback onBuyTime;
 
   @override
   Widget build(BuildContext context) {
@@ -114,11 +119,24 @@ class PauseOverlay extends StatelessWidget {
             const SizedBox(height: 16),
             ChunkyButton(label: 'Resume', icon: Icons.play_arrow_rounded, color: const Color(0xFF43A047), width: 230, onTap: onResume),
             const SizedBox(height: 12),
+            ChunkyButton(
+              label: '+$kBuyTimeSeconds sec  ($kBuyTimeCost stars)',
+              icon: Icons.add_alarm_rounded,
+              fontSize: 18,
+              color: wallet >= kBuyTimeCost ? const Color(0xFFFFA000) : const Color(0xFF9E9E9E),
+              width: 230,
+              onTap: onBuyTime,
+            ),
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text('Your stars: $wallet', style: fancyText(15, color: const Color(0xFF8D6E63))),
+            ),
+            const SizedBox(height: 8),
             ChunkyButton(label: 'Restart', icon: Icons.replay_rounded, color: const Color(0xFF1E88E5), width: 230, onTap: onRestart),
             const SizedBox(height: 12),
             ChunkyButton(label: 'Settings', icon: Icons.settings_rounded, color: const Color(0xFF8E24AA), width: 230, onTap: onSettings),
             const SizedBox(height: 12),
-            ChunkyButton(label: 'Levels', icon: Icons.grid_view_rounded, color: const Color(0xFFEF5350), width: 230, onTap: onMenu),
+            ChunkyButton(label: 'Tasks', icon: Icons.grid_view_rounded, color: const Color(0xFFEF5350), width: 230, onTap: onMenu),
           ],
         ),
       ),
@@ -196,19 +214,21 @@ class _StarRowState extends State<StarRow> with SingleTickerProviderStateMixin {
 class LevelCompleteOverlay extends StatelessWidget {
   const LevelCompleteOverlay({
     super.key,
+    required this.title,
     required this.stars,
     required this.score,
     required this.timeLeft,
-    required this.isLast,
+    required this.nextLabel,
     required this.onNext,
     required this.onReplay,
     required this.onMenu,
   });
 
+  final String title;
   final int stars;
   final int score;
   final int timeLeft;
-  final bool isLast;
+  final String? nextLabel; // null = nothing comes after this task
   final VoidCallback onNext;
   final VoidCallback onReplay;
   final VoidCallback onMenu;
@@ -222,7 +242,7 @@ class LevelCompleteOverlay extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             FittedBox(
-              child: Text('Level Complete!', style: fancyText(36, color: const Color(0xFF2E7D32))),
+              child: Text(title, style: fancyText(36, color: const Color(0xFF2E7D32))),
             ),
             const SizedBox(height: 6),
             StarRow(count: stars),
@@ -230,14 +250,14 @@ class LevelCompleteOverlay extends StatelessWidget {
             Text('Score: $score', style: fancyText(26, color: const Color(0xFF5D4037))),
             Text('Time left: ${timeLeft}s', style: fancyText(18, color: const Color(0xFF8D6E63))),
             const SizedBox(height: 16),
-            if (!isLast)
-              ChunkyButton(label: 'Next Level', icon: Icons.arrow_forward_rounded, color: const Color(0xFF43A047), width: 240, onTap: onNext)
+            if (nextLabel != null)
+              ChunkyButton(label: nextLabel!, icon: Icons.arrow_forward_rounded, color: const Color(0xFF43A047), width: 240, onTap: onNext)
             else
               Text('You hatched them all!', style: fancyText(22, color: const Color(0xFFEF6C00))),
             const SizedBox(height: 12),
             ChunkyButton(label: 'Play Again', icon: Icons.replay_rounded, color: const Color(0xFF1E88E5), width: 240, onTap: onReplay),
             const SizedBox(height: 12),
-            ChunkyButton(label: 'Levels', icon: Icons.grid_view_rounded, color: const Color(0xFFEF5350), width: 240, onTap: onMenu),
+            ChunkyButton(label: 'Tasks', icon: Icons.grid_view_rounded, color: const Color(0xFFEF5350), width: 240, onTap: onMenu),
           ],
         ),
       ),
@@ -246,9 +266,12 @@ class LevelCompleteOverlay extends StatelessWidget {
 }
 
 class GameOverOverlay extends StatelessWidget {
-  const GameOverOverlay({super.key, required this.score, required this.reason, required this.onRetry, required this.onMenu});
+  const GameOverOverlay({super.key, required this.score, required this.reason, required this.wallet, required this.canContinue, required this.onContinue, required this.onRetry, required this.onMenu});
   final int score;
   final String reason;
+  final int wallet;
+  final bool canContinue; // time ran out and you have enough stars
+  final VoidCallback onContinue;
   final VoidCallback onRetry;
   final VoidCallback onMenu;
 
@@ -266,9 +289,23 @@ class GameOverOverlay extends StatelessWidget {
             Text(reason, textAlign: TextAlign.center, style: fancyText(22, color: const Color(0xFF8D6E63))),
             Text('Score: $score', style: fancyText(24, color: const Color(0xFF5D4037))),
             const SizedBox(height: 16),
+            if (canContinue) ...[
+              ChunkyButton(
+                label: '+$kBuyTimeSeconds sec  ($kBuyTimeCost stars)',
+                icon: Icons.add_alarm_rounded,
+                fontSize: 18,
+                color: wallet >= kBuyTimeCost ? const Color(0xFFFFA000) : const Color(0xFF9E9E9E),
+                width: 230,
+                onTap: onContinue,
+              ),
+              Padding(
+                padding: const EdgeInsets.only(top: 4, bottom: 8),
+                child: Text('Your stars: $wallet', style: fancyText(15, color: const Color(0xFF8D6E63))),
+              ),
+            ],
             ChunkyButton(label: 'Retry', icon: Icons.replay_rounded, color: const Color(0xFF43A047), width: 230, onTap: onRetry),
             const SizedBox(height: 12),
-            ChunkyButton(label: 'Levels', icon: Icons.grid_view_rounded, color: const Color(0xFFEF5350), width: 230, onTap: onMenu),
+            ChunkyButton(label: 'Tasks', icon: Icons.grid_view_rounded, color: const Color(0xFFEF5350), width: 230, onTap: onMenu),
           ],
         ),
       ),
