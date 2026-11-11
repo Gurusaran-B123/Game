@@ -24,6 +24,7 @@ class HatchAnimation extends StatefulWidget {
     required this.to,
     required this.eggSize,
     required this.animalSize,
+    required this.endSize,
     required this.onPop,
     required this.onFinished,
   });
@@ -34,6 +35,7 @@ class HatchAnimation extends StatefulWidget {
   final Offset to;
   final double eggSize;
   final double animalSize;
+  final double endSize; // size of the baby when it sits at home
   final VoidCallback onPop;
   final VoidCallback onFinished;
 
@@ -200,7 +202,7 @@ class _HatchAnimationState extends State<HatchAnimation> with SingleTickerProvid
       final u = ((ms - _tCelebEnd) / (_total - _tCelebEnd)).clamp(0.0, 1.0);
       final e = Curves.easeInOut.transform(u);
       pos = Offset.lerp(from, widget.to, e)!;
-      size = aw * (1.25 - 0.25 * e);
+      size = aw * 1.25 + (widget.endSize - aw * 1.25) * e;
       flip = widget.to.dx < from.dx;
       switch (kind) {
         case BabyKind.penguin: // slides on the ice, no hopping
@@ -209,8 +211,12 @@ class _HatchAnimationState extends State<HatchAnimation> with SingleTickerProvid
           sy = 0.92;
           break;
         case BabyKind.dragon: // heavy little stomps
+        case BabyKind.dino:
           dy = -math.sin(u * math.pi * 6).abs() * 8;
           angle = math.sin(u * math.pi * 12) * 0.07;
+          break;
+        case BabyKind.bunny: // big bunny hops
+          dy = -math.sin(u * math.pi * 5).abs() * 26;
           break;
         default: // happy hops
           dy = -math.sin(u * math.pi * 5).abs() * 14;
@@ -220,6 +226,7 @@ class _HatchAnimationState extends State<HatchAnimation> with SingleTickerProvid
       final u = (since - 700) / (_tCelebEnd - _tCrackEnd - 700);
       dy = -math.sin(u * math.pi * 3).abs() * 18;
       if (kind == BabyKind.penguin) angle = math.sin(u * math.pi * 6) * 0.12;
+      if (kind == BabyKind.unicorn) angle = math.sin(u * math.pi * 6) * 0.22;
       if (kind == BabyKind.peacock) fanT = Curves.easeOutBack.transform(((since - 400) / 600).clamp(0.0, 1.0));
       if (kind == BabyKind.dragon) fireT = ((since - 800) / 700).clamp(0.0, 1.0);
     } else if (kind == BabyKind.peacock) {
