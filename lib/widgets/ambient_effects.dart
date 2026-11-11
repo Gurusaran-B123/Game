@@ -93,6 +93,33 @@ class _AmbientPainter extends CustomPainter {
             canvas.restore();
           }
           break;
+        case AmbientKind.meadow: // pink petals
+          {
+            final x = size.width * x0 + math.sin(t * math.pi * 2 * 2 + ph) * 26;
+            canvas.save();
+            canvas.translate(x, size.height * cyc);
+            canvas.rotate(t * math.pi * 6 + ph);
+            canvas.drawOval(Rect.fromCenter(center: Offset.zero, width: r * 2.6, height: r * 1.4),
+                Paint()..color = const Color(0xFFFF9EC0).withAlpha(210));
+            canvas.restore();
+          }
+          break;
+        case AmbientKind.jungle: // warm dust and leaves
+          {
+            final x = size.width * x0 + math.sin(t * math.pi * 2 * 2 + ph) * 18;
+            canvas.drawCircle(Offset(x, size.height * cyc), r * 0.7,
+                Paint()..color = (i.isEven ? const Color(0xFFFFE082) : const Color(0xFF8BC34A)).withAlpha(200));
+          }
+          break;
+        case AmbientKind.rainbow: // twinkling stars
+          {
+            final x = size.width * x0;
+            final y = size.height * y0 * 0.85;
+            final tw = 0.5 + 0.5 * math.sin(t * math.pi * 2 * 6 + ph);
+            canvas.drawCircle(Offset(x, y), r * (0.5 + tw),
+                Paint()..color = Colors.white.withAlpha((90 + 150 * tw).round()));
+          }
+          break;
         case AmbientKind.farm: // petals + little birds
           if (i < 6) {
             final x = size.width * ((t * spd + x0) % 1.0);
