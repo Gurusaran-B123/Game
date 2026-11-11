@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 
 import 'models/level_model.dart';
 import 'screens/album_screen.dart';
-import 'screens/game_screen.dart';
+import 'screens/task_select_screen.dart';
 import 'utils/progress_store.dart';
 import 'utils/sound_manager.dart';
 import 'widgets/game_overlays.dart';
@@ -46,8 +46,7 @@ class LevelSelectScreen extends StatefulWidget {
 }
 
 class _LevelSelectScreenState extends State<LevelSelectScreen> {
-  int _unlocked = 1;
-  List<int> _stars = List.filled(kLevels.length, 0);
+  Progress? _pr;
 
   @override
   void initState() {
@@ -59,31 +58,23 @@ class _LevelSelectScreenState extends State<LevelSelectScreen> {
   }
 
   Future<void> _load() async {
-    final u = await ProgressStore.unlocked();
-    final s = <int>[];
-    for (final l in kLevels) {
-      s.add(await ProgressStore.stars(l.number));
-    }
-    if (mounted) {
-      setState(() {
-        _unlocked = u;
-        _stars = s;
-      });
-    }
+    final p = await ProgressStore.load();
+    if (mounted) setState(() => _pr = p);
   }
 
   Future<void> _open(int index) async {
-    if (index + 1 > _unlocked) {
+    final pr = _pr;
+    if (pr != null && !pr.levelUnlocked(index)) {
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(SnackBar(
-          content: Text('Finish Level $index first!', style: fancyText(18)),
-          duration: const Duration(seconds: 1),
+          content: Text('Finish Task 10 of Level $index first!', style: fancyText(18)),
+          duration: const Duration(seconds: 2),
         ));
       return;
     }
     await Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => GameScreen(levelIndex: index)),
+      MaterialPageRoute(builder: (_) => TaskSelectScreen(levelIndex: index)),
     );
     if (!mounted) return;
     await _load();
@@ -92,6 +83,7 @@ class _LevelSelectScreenState extends State<LevelSelectScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final pr = _pr;
     return Scaffold(
       body: Container(
         decoration: const BoxDecoration(
@@ -109,6 +101,12 @@ class _LevelSelectScreenState extends State<LevelSelectScreen> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
+                    HudChip(
+                      icon: Icons.star_rounded,
+                      text: '${pr?.wallet ?? 0}',
+                      color: const Color(0xFFFFD54F),
+                    ),
+                    const SizedBox(width: 10),
                     RoundIconButton(
                       icon: Icons.menu_book_rounded,
                       color: const Color(0xFF43A047),
@@ -142,8 +140,8 @@ class _LevelSelectScreenState extends State<LevelSelectScreen> {
                   itemCount: kLevels.length,
                   itemBuilder: (context, i) => _LevelCard(
                     level: kLevels[i],
-                    stars: _stars[i],
-                    locked: i + 1 > _unlocked,
+                    stars: pr?.levelStars(i) ?? 0,
+                    locked: pr != null && !pr.levelUnlocked(i),
                     onTap: () => _open(i),
                   ),
                 ),
@@ -165,7 +163,7 @@ class _LevelCard extends StatelessWidget {
   });
 
   final LevelModel level;
-  final int stars;
+  final int stars; // total stars of the 10 tasks
   final bool locked;
   final VoidCallback onTap;
 
@@ -219,19 +217,17 @@ class _LevelCard extends StatelessWidget {
                       mainAxisAlignment: MainAxisAlignment.center,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Level ${level.number}  -  ${level.tag}', style: fancyText(15, color: Colors.white70)),
+                        Text('Level ${level.number}  -  ${level.tag}',
+                            style: fancyText(15, color: Colors.white70)),
                         FittedBox(
                           fit: BoxFit.scaleDown,
                           child: Text(level.title, style: fancyText(26)),
                         ),
                         Row(
                           children: [
-                            for (var s = 0; s < 3; s++)
-                              Icon(
-                                Icons.star_rounded,
-                                size: 26,
-                                color: s < stars ? const Color(0xFFFFC107) : Colors.white54,
-                              ),
+                            const Icon(Icons.star_rounded, size: 26, color: Color(0xFFFFC107)),
+                            const SizedBox(width: 4),
+                            Text('$stars/${kTasksPerLevel * 3}', style: fancyText(20)),
                           ],
                         ),
                       ],
