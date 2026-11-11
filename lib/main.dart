@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'models/level_model.dart';
+import 'screens/album_screen.dart';
 import 'screens/game_screen.dart';
 import 'utils/progress_store.dart';
 import 'utils/sound_manager.dart';
@@ -109,6 +110,14 @@ class _LevelSelectScreenState extends State<LevelSelectScreen> {
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
                     RoundIconButton(
+                      icon: Icons.menu_book_rounded,
+                      color: const Color(0xFF43A047),
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const AlbumScreen()),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    RoundIconButton(
                       icon: Icons.settings_rounded,
                       color: const Color(0xFF8E24AA),
                       onTap: () => showDialog<void>(
@@ -120,7 +129,7 @@ class _LevelSelectScreenState extends State<LevelSelectScreen> {
                 ),
               ),
               Image.asset(
-                'assets/images/egg_white.png',
+                'assets/images/egg_golden.png',
                 height: 74,
                 errorBuilder: (c, e, s) => const Icon(Icons.egg_rounded, size: 74, color: Colors.white),
               ),
@@ -210,7 +219,7 @@ class _LevelCard extends StatelessWidget {
                       mainAxisAlignment: MainAxisAlignment.center,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Level ${level.number}', style: fancyText(16, color: Colors.white70)),
+                        Text('Level ${level.number}  -  ${level.tag}', style: fancyText(15, color: Colors.white70)),
                         FittedBox(
                           fit: BoxFit.scaleDown,
                           child: Text(level.title, style: fancyText(26)),
