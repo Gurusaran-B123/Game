@@ -246,8 +246,9 @@ class LevelCompleteOverlay extends StatelessWidget {
 }
 
 class GameOverOverlay extends StatelessWidget {
-  const GameOverOverlay({super.key, required this.score, required this.onRetry, required this.onMenu});
+  const GameOverOverlay({super.key, required this.score, required this.reason, required this.onRetry, required this.onMenu});
   final int score;
+  final String reason;
   final VoidCallback onRetry;
   final VoidCallback onMenu;
 
@@ -262,7 +263,7 @@ class GameOverOverlay extends StatelessWidget {
             Text('Game Over', style: fancyText(38, color: const Color(0xFFD32F2F))),
             const SizedBox(height: 6),
             const Icon(Icons.alarm_off_rounded, size: 70, color: Color(0xFFEF5350)),
-            Text("Time's up!", style: fancyText(22, color: const Color(0xFF8D6E63))),
+            Text(reason, textAlign: TextAlign.center, style: fancyText(22, color: const Color(0xFF8D6E63))),
             Text('Score: $score', style: fancyText(24, color: const Color(0xFF5D4037))),
             const SizedBox(height: 16),
             ChunkyButton(label: 'Retry', icon: Icons.replay_rounded, color: const Color(0xFF43A047), width: 230, onTap: onRetry),
